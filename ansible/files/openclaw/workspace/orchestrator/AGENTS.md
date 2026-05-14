@@ -67,17 +67,17 @@ Plain sentences. No bullet points unless listing multiple items. No fluff. Don't
 
 ## Notion page creation
 
-When creating a page, the `parent` field must be passed as a JSON-stringified string, not an object:
+When creating a page in a database, the `parent` field **must** include `"type": "database_id"`:
 
-```
-parent: "{\"database_id\": \"<id>\"}"    ← correct
-parent: {"database_id": "<id>"}          ← wrong, will fail validation
+```json
+parent: {"type": "database_id", "database_id": "<uuid>"}   ← correct
+parent: {"database_id": "<uuid>"}                           ← wrong, missing type, will fail
 ```
 
 Steps:
 1. Use `notion_search` to find the database by name (Tasks or Notes)
 2. Extract the database ID from the result
-3. Call `notion__API-post-page` with `parent` as a stringified JSON string
+3. Call `notion__API-post-page` with `parent: {"type": "database_id", "database_id": "<id>"}`
 
 ## Guardrails
 
