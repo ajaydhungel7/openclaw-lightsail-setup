@@ -151,8 +151,6 @@
       loop:
         - ~/.openclaw/workspace/orchestrator/skills/weather
         - ~/.openclaw/workspace/orchestrator/skills/gog
-        - ~/.openclaw/workspace/google/skills/gog
-        - ~/.openclaw/workspace/notion
 
     - name: Install bundled skills into agent workspaces
       ansible.builtin.copy:
@@ -160,8 +158,6 @@
         dest: "{{ item.dest }}"
         remote_src: true
       loop:
-        - src: /usr/lib/node_modules/openclaw/skills/gog/SKILL.md
-          dest: ~/.openclaw/workspace/google/skills/gog/SKILL.md
         - src: /usr/lib/node_modules/openclaw/skills/gog/SKILL.md
           dest: ~/.openclaw/workspace/orchestrator/skills/gog/SKILL.md
         - src: /usr/lib/node_modules/openclaw/skills/weather/SKILL.md
@@ -182,29 +178,11 @@
         - IDENTITY.md
         - HEARTBEAT.md
 
-    - name: Copy google workspace files
-      ansible.builtin.copy:
-        src: "files/openclaw/workspace/google/{{ item }}"
-        dest: "~/.openclaw/workspace/google/{{ item }}"
-      loop:
-        - AGENTS.md
-        - SOUL.md
-        - IDENTITY.md
-
-    - name: Copy notion workspace files
-      ansible.builtin.copy:
-        src: "files/openclaw/workspace/notion/{{ item }}"
-        dest: "~/.openclaw/workspace/notion/{{ item }}"
-      loop:
-        - AGENTS.md
-        - SOUL.md
-        - IDENTITY.md
-
     # ── Agent config ──────────────────────────────────────────────────────────
 
     - name: Register agents
       ansible.builtin.shell: |
-        openclaw config set agents.list '[{"id":"orchestrator","default":true,"workspace":"~/.openclaw/workspace/orchestrator"},{"id":"google","workspace":"~/.openclaw/workspace/google"},{"id":"notion","workspace":"~/.openclaw/workspace/notion"}]'
+        openclaw config set agents.list '[{"id":"orchestrator","default":true,"workspace":"~/.openclaw/workspace/orchestrator"}]'
       changed_when: true
 
     - name: Configure Telegram channel
@@ -224,10 +202,6 @@
 
     - name: Disable agent sandbox (agents need host access for gog and MCP tools)
       ansible.builtin.command: openclaw config set agents.defaults.sandbox.mode off
-      changed_when: true
-
-    - name: Allow orchestrator to spawn any configured sub-agent
-      ansible.builtin.command: openclaw config set agents.defaults.subagents.allowAgents '["*"]'
       changed_when: true
 
     - name: Allow tools to execute on gateway host

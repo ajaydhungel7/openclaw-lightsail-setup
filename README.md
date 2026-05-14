@@ -145,8 +145,6 @@ Agents live in `ansible/files/openclaw/workspace/`. Each agent has:
 | Agent | Role |
 |-------|------|
 | `orchestrator/` | Atlas 🧭 — receives Telegram messages, calls gog + Notion + weather directly |
-| `google/` | Google Agent 📬 — reserved for complex Google tasks spawned by orchestrator |
-| `notion/` | Notion Agent 📓 — reserved for complex Notion tasks |
 
 `USER.md` at the workspace root sets communication preferences applied to all agents.
 
