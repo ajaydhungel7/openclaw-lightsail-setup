@@ -77,4 +77,7 @@ token:
 restart:
 	$(SSH) "openclaw gateway restart"
 
-.PHONY: apply destroy dashboard approve bedrock-role configure gog-auth ssh status agents logs token restart
+reset-sessions:
+	$(SSH) "cd ~/.openclaw/agents/orchestrator/sessions && for f in *.jsonl; do mv \"\$$f\" \"\$$f.bak\" 2>/dev/null; done; openclaw gateway restart"
+
+.PHONY: apply destroy dashboard approve bedrock-role configure gog-auth ssh status agents logs token restart reset-sessions
