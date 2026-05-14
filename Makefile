@@ -28,6 +28,10 @@ dashboard:
 approve:
 	$(PLAY) ansible/approve_device.yml
 
+## Step 2b — re-run Bedrock IAM role setup (idempotent, safe to re-run)
+bedrock-role:
+	bash scripts/setup-bedrock-role.sh $(shell grep instance_name terraform.tfvars 2>/dev/null | cut -d'"' -f2 | xargs || echo "openclaw") $(shell grep aws_region terraform.tfvars 2>/dev/null | cut -d'"' -f2 | xargs || echo "us-east-1")
+
 ## Step 3 — re-run full configuration (idempotent, safe to re-run anytime)
 configure:
 	$(PLAY) $(VARS) ansible/configure_openclaw.yml
@@ -73,4 +77,4 @@ token:
 restart:
 	$(SSH) "openclaw gateway restart"
 
-.PHONY: apply destroy dashboard approve configure gog-auth ssh status agents logs token restart
+.PHONY: apply destroy dashboard approve bedrock-role configure gog-auth ssh status agents logs token restart

@@ -28,7 +28,7 @@ output "dashboard_url" {
   value       = var.create_static_ip ? "https://${aws_lightsail_static_ip.openclaw[0].ip_address}" : "https://${aws_lightsail_instance.openclaw.public_ip_address}"
 }
 
-output "bedrock_role_arn" {
-  description = "ARN of the IAM role created for Bedrock access"
-  value       = var.create_bedrock_role && var.ec2_instance_id != "" ? aws_iam_role.openclaw_bedrock[0].arn : null
+output "bedrock_role_setup" {
+  description = "Whether the Bedrock IAM role setup script was run"
+  value       = var.create_bedrock_role ? "completed" : "skipped"
 }

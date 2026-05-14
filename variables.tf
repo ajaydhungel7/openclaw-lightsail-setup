@@ -42,11 +42,6 @@ variable "create_bedrock_role" {
   default     = true
 }
 
-variable "ec2_instance_id" {
-  description = "Underlying EC2 instance ID of the Lightsail instance (e.g. i-0eec813f38578756a). Used to name the Bedrock IAM role to match what the OpenClaw blueprint expects in /home/ubuntu/.aws/config."
-  type        = string
-  default     = ""
-}
 
 variable "telegram_bot_token" {
   description = "Telegram bot token from BotFather"

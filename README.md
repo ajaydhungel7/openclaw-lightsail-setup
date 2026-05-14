@@ -74,27 +74,7 @@ This provisions the Lightsail instance, static IP, firewall, and Bedrock IAM rol
 
 Takes ~5–10 minutes. At the end, Ansible prints the dashboard URL and token.
 
-### 3. Get the EC2 instance ID and re-apply
-
-The Bedrock IAM role needs the underlying EC2 instance ID to be trusted. After the first apply:
-
-```bash
-make ssh
-# Inside the instance:
-curl -s http://169.254.169.254/latest/meta-data/instance-id
-```
-
-Add it to `terraform.tfvars`:
-```
-ec2_instance_id = "i-0abc123..."
-```
-
-Then re-apply:
-```bash
-terraform apply
-```
-
-### 4. Connect your browser
+### 3. Connect your browser
 
 ```bash
 make dashboard   # opens https://<your-ip>
@@ -106,7 +86,7 @@ Enter the WebSocket URL (`wss://<ip>`) and token from the Ansible output, click 
 make approve     # approves the browser pairing
 ```
 
-### 5. Set up Google auth (one-time)
+### 4. Set up Google auth (one-time)
 
 Follow [docs/google-setup.md](docs/google-setup.md) to create a Google Cloud project and download your OAuth credentials, then:
 
@@ -114,11 +94,11 @@ Follow [docs/google-setup.md](docs/google-setup.md) to create a Google Cloud pro
 make gog-auth GOG_CREDS=~/Downloads/client_secret_*.json EMAIL=you@gmail.com
 ```
 
-### 6. Set up Notion (one-time)
+### 5. Set up Notion (one-time)
 
 Follow [docs/notion-setup.md](docs/notion-setup.md) to create the integration and databases.
 
-### 7. Start chatting
+### 6. Start chatting
 
 Open Telegram, message your bot. Atlas is ready.
 
