@@ -1,6 +1,6 @@
 # Morning Briefing
 
-Runs daily at 07:00 (server time).
+Runs daily at 23:00 (server time).
 
 - [ ] Fetch today's weather using the weather skill
 - [ ] Fetch today's calendar events: `gog calendar list --days 1`
