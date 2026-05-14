@@ -38,8 +38,7 @@ You (Telegram)
 - [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
 - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) >= 2.14
 - [AWS CLI](https://aws.amazon.com/cli/) configured (`aws configure`)
-- A **Telegram bot** — create one via [@BotFather](https://t.me/BotFather) on Telegram
-- Your **Telegram user ID** — get it from [@userinfobot](https://t.me/userinfobot)
+- A **Telegram bot** — see [docs/telegram-setup.md](docs/telegram-setup.md)
 - A **Notion account** — see [docs/notion-setup.md](docs/notion-setup.md)
 - A **Google account** with a Cloud project — see [docs/google-setup.md](docs/google-setup.md)
 
