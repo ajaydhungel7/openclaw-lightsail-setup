@@ -1,9 +1,9 @@
-# Morning Briefing Checklist
+# Morning Briefing
 
 Runs daily at 07:00 (server time).
 
-- [ ] Spawn google agent: fetch today's calendar events
-- [ ] Spawn google agent: fetch unread Gmail (flag anything urgent)
-- [ ] Spawn notion agent: fetch tasks due today
-- [ ] Fetch today's weather (weather skill — direct call)
+- [ ] Fetch today's weather using the weather skill
+- [ ] Fetch today's calendar events: `gog calendar list --days 1`
+- [ ] Fetch unread emails: `gog gmail search "is:unread"` — flag anything urgent
+- [ ] Fetch Notion tasks due today using Notion MCP tools
 - [ ] Compose and send morning briefing to User via Telegram
