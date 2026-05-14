@@ -1,0 +1,18 @@
+# ── Bedrock IAM Role ──────────────────────────────────────────────────────────
+# Underlying EC2 instance ID of the Lightsail instance.
+# After first deploy, get it by running:
+#   ssh -i openclaw.pem ubuntu@<ip> "curl -s http://169.254.169.254/latest/meta-data/instance-id"
+# Then re-run: terraform apply
+ec2_instance_id = ""
+
+# ── Telegram ──────────────────────────────────────────────────────────────────
+# Bot token from @BotFather → /newbot
+telegram_bot_token = ""
+
+# Your Telegram user ID — get it from @userinfobot
+telegram_user_id = ""
+
+# ── Notion ────────────────────────────────────────────────────────────────────
+# notion.so/profile/integrations → create integration → copy token (ntn_****)
+# See docs/notion-setup.md for full setup instructions
+notion_token = ""

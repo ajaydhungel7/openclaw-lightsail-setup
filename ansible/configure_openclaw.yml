@@ -1,0 +1,279 @@
+---
+# OpenClaw Gateway Configuration Playbook
+#
+# Fully automated — no human interaction required.
+# Run automatically by Terraform after infrastructure is provisioned.
+#
+# What it does:
+#   1. Waits for the gateway to start
+#   2. Waits for lightsail-manage-certd to issue the TLS cert (avoids race with Apache)
+#   3. Fixes Apache WebSocket proxying (upgrade=websocket)
+#   4. Configures gateway (mode=local, bind=loopback, allowed origins)
+#   5. Installs skill binaries (gog for Gmail/Calendar/Drive)
+#   6. Registers Notion MCP server
+#   7. Deploys agent workspace files (AGENTS.md, SOUL.md, skills, etc.)
+#   8. Configures tool execution permissions
+#   9. Restarts gateway
+#  10. Prints the URL and token so you can run approve_device.yml next
+#
+# Usage:
+#   ansible-playbook -i inventory.ini configure_openclaw.yml
+
+- name: Configure OpenClaw gateway
+  hosts: all
+  gather_facts: false
+
+  vars:
+    openclaw_config_path: "~/.openclaw/openclaw.json"
+    apache_vhost_conf: "/etc/apache2/sites-enabled/default-ssl.conf"
+
+  tasks:
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Wait for OpenClaw gateway to be running
+      ansible.builtin.shell: |
+        timeout 300 bash -c 'until openclaw gateway status 2>/dev/null | grep -qi running; do sleep 5; done'
+      changed_when: false
+
+    # ── Wait for TLS cert ─────────────────────────────────────────────────────
+    # lightsail-manage-certd issues a Let's Encrypt cert for the instance IP via
+    # HTTP-01 challenge on port 80. It stops and starts Apache during issuance.
+    # We must wait for the cert to exist before touching Apache config, otherwise
+    # we race with the daemon and risk disrupting the cert issuance process.
+    # The cert symlink appears at /etc/letsencrypt/live/<IP>/fullchain.pem once
+    # the daemon has successfully issued the cert.
+
+    - name: Wait for lightsail-manage-certd to issue TLS certificate (up to 15 min)
+      ansible.builtin.shell: |
+        for i in $(seq 1 90); do
+          CERT=$(sudo find /etc/letsencrypt/live -name 'fullchain.pem' 2>/dev/null | head -1)
+          if [ -n "$CERT" ]; then
+            echo "Certificate found: $CERT"
+            exit 0
+          fi
+          echo "  Attempt $i/90: waiting for certificate..."
+          sleep 10
+        done
+        echo "Timed out waiting for TLS certificate" && exit 1
+      register: cert_wait
+      changed_when: false
+      failed_when: cert_wait.rc != 0
+
+    # ── Apache fix ────────────────────────────────────────────────────────────
+    # Root cause of 1006 disconnects: ProxyPass / intercepts WebSocket requests
+    # before the RewriteRule can handle them, proxying them as plain HTTP with
+    # no WebSocket upgrade. Fix: add upgrade=websocket to ProxyPass so Apache
+    # hands off WebSocket connections to mod_proxy_wstunnel automatically.
+
+    - name: Fix Apache WebSocket proxying (add upgrade=websocket to ProxyPass)
+      ansible.builtin.shell: |
+        if ! grep -q 'upgrade=websocket' {{ apache_vhost_conf }}; then
+          sudo sed -i \
+            's|ProxyPass / http://127.0.0.1:18789/|ProxyPass / http://127.0.0.1:18789/ upgrade=websocket|' \
+            {{ apache_vhost_conf }}
+          echo "changed"
+        else
+          echo "already set"
+        fi
+      register: apache_ws_fix
+      changed_when: "'changed' in apache_ws_fix.stdout"
+
+    - name: Reload Apache to apply WebSocket fix
+      ansible.builtin.command: sudo systemctl reload apache2
+      when: apache_ws_fix.changed
+      changed_when: true
+
+    # ── Gateway config ────────────────────────────────────────────────────────
+
+    - name: Set gateway mode to local
+      ansible.builtin.command: openclaw config set gateway.mode local
+      changed_when: true
+
+    - name: Set gateway bind to loopback (Apache proxies external HTTPS/WSS)
+      ansible.builtin.command: openclaw config set gateway.bind loopback
+      changed_when: true
+
+    - name: Update allowed origins to the public IP
+      ansible.builtin.shell: |
+        jq '.gateway.controlUi.allowedOrigins = ["https://{{ inventory_hostname }}"]' \
+          {{ openclaw_config_path }} > /tmp/openclaw.json && \
+          mv /tmp/openclaw.json {{ openclaw_config_path }}
+      changed_when: true
+
+    # ── Install skill binaries ────────────────────────────────────────────────
+    # OpenClaw bundled skills require external binaries. Install them here so
+    # skills show as "ready" rather than "needs setup" on fresh deploys.
+
+    - name: Install gog (Google Workspace CLI for Gmail, Calendar, Drive)
+      ansible.builtin.shell: |
+        if ! command -v gog &>/dev/null; then
+          LATEST=$(curl -s https://api.github.com/repos/openclaw/gogcli/releases/latest \
+            | grep -o 'browser_download_url.*linux_amd64.tar.gz' | cut -d'"' -f3)
+          curl -sL "$LATEST" | tar xz -C /tmp
+          sudo mv /tmp/gog /usr/local/bin/gog
+          echo "installed"
+        else
+          echo "already installed"
+        fi
+      register: gog_install
+      changed_when: "'installed' in gog_install.stdout"
+
+    # ── MCP servers ───────────────────────────────────────────────────────────
+    # Register Notion MCP server using the official pre-built package.
+    # The token is passed as an extra var from Terraform and embedded directly
+    # in the MCP config so the gateway can start it without env var setup.
+
+    - name: Ensure Node.js is available (required for npx)
+      ansible.builtin.shell: |
+        if ! command -v npx &>/dev/null; then
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+        fi
+      changed_when: false
+
+    - name: Register Notion MCP server
+      ansible.builtin.command: >
+        openclaw mcp set notion
+        '{"command":"npx","args":["-y","@notionhq/notion-mcp-server"],"env":{"NOTION_TOKEN":"{{ notion_token }}"}}'
+      changed_when: true
+
+    # ── Agent workspace files ─────────────────────────────────────────────────
+    # Copy all agent workspace files (AGENTS.md, SOUL.md, IDENTITY.md, skills)
+    # to the server. These define how each agent thinks and behaves.
+
+    - name: Create workspace directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - ~/.openclaw/workspace/orchestrator/skills/weather
+        - ~/.openclaw/workspace/orchestrator/skills/gog
+        - ~/.openclaw/workspace/google/skills/gog
+        - ~/.openclaw/workspace/notion
+
+    - name: Install bundled skills into agent workspaces
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        remote_src: true
+      loop:
+        - src: /usr/lib/node_modules/openclaw/skills/gog/SKILL.md
+          dest: ~/.openclaw/workspace/google/skills/gog/SKILL.md
+        - src: /usr/lib/node_modules/openclaw/skills/gog/SKILL.md
+          dest: ~/.openclaw/workspace/orchestrator/skills/gog/SKILL.md
+        - src: /usr/lib/node_modules/openclaw/skills/weather/SKILL.md
+          dest: ~/.openclaw/workspace/orchestrator/skills/weather/SKILL.md
+
+    - name: Copy shared USER.md
+      ansible.builtin.copy:
+        src: files/openclaw/workspace/USER.md
+        dest: ~/.openclaw/workspace/USER.md
+
+    - name: Copy orchestrator workspace files
+      ansible.builtin.copy:
+        src: "files/openclaw/workspace/orchestrator/{{ item }}"
+        dest: "~/.openclaw/workspace/orchestrator/{{ item }}"
+      loop:
+        - AGENTS.md
+        - SOUL.md
+        - IDENTITY.md
+        - HEARTBEAT.md
+
+    - name: Copy google workspace files
+      ansible.builtin.copy:
+        src: "files/openclaw/workspace/google/{{ item }}"
+        dest: "~/.openclaw/workspace/google/{{ item }}"
+      loop:
+        - AGENTS.md
+        - SOUL.md
+        - IDENTITY.md
+
+    - name: Copy notion workspace files
+      ansible.builtin.copy:
+        src: "files/openclaw/workspace/notion/{{ item }}"
+        dest: "~/.openclaw/workspace/notion/{{ item }}"
+      loop:
+        - AGENTS.md
+        - SOUL.md
+        - IDENTITY.md
+
+    # ── Agent config ──────────────────────────────────────────────────────────
+
+    - name: Register agents
+      ansible.builtin.shell: |
+        openclaw config set agents.list '[{"id":"orchestrator","default":true,"workspace":"~/.openclaw/workspace/orchestrator"},{"id":"google","workspace":"~/.openclaw/workspace/google"},{"id":"notion","workspace":"~/.openclaw/workspace/notion"}]'
+      changed_when: true
+
+    - name: Configure Telegram channel
+      ansible.builtin.command: >
+        openclaw config set channels.telegram
+        '{"enabled":true,"botToken":"{{ telegram_bot_token }}","dmPolicy":"pairing","allowFrom":["tg:{{ telegram_user_id }}"]}'
+      changed_when: true
+
+    - name: Bind Telegram to orchestrator agent
+      ansible.builtin.command: >
+        openclaw config set bindings '[{"agentId":"orchestrator","match":{"channel":"telegram"}}]'
+      changed_when: true
+
+    # ── Tool execution permissions ────────────────────────────────────────────
+    # Required for MCP tools (Notion) to execute on the gateway host.
+    # Without these, tools run in an isolated sandbox with no system access.
+
+    - name: Disable agent sandbox (agents need host access for gog and MCP tools)
+      ansible.builtin.command: openclaw config set agents.defaults.sandbox.mode off
+      changed_when: true
+
+    - name: Allow orchestrator to spawn any configured sub-agent
+      ansible.builtin.command: openclaw config set agents.defaults.subagents.allowAgents '["*"]'
+      changed_when: true
+
+    - name: Allow tools to execute on gateway host
+      ansible.builtin.command: openclaw config set tools.exec.host gateway
+      changed_when: true
+
+    - name: Disable tool execution prompts
+      ansible.builtin.command: openclaw config set tools.exec.ask off
+      changed_when: true
+
+    - name: Set tool security level to full
+      ansible.builtin.command: openclaw config set tools.exec.security full
+      changed_when: true
+
+    - name: Set GOG_KEYRING_PASSWORD in gateway environment
+      ansible.builtin.lineinfile:
+        path: ~/.openclaw/gateway.systemd.env
+        line: "GOG_KEYRING_PASSWORD=openclaw"
+        create: true
+        mode: "0600"
+      changed_when: true
+
+    - name: Restart OpenClaw gateway to apply config changes
+      ansible.builtin.command: openclaw gateway restart
+      changed_when: true
+
+    - name: Wait for gateway to come back up
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Read token from config
+      ansible.builtin.shell: "jq -r '.gateway.auth.token' {{ openclaw_config_path }}"
+      register: openclaw_token
+      changed_when: false
+
+    - name: Print connection details
+      ansible.builtin.debug:
+        msg:
+          - "========================================="
+          - "  OpenClaw configured successfully"
+          - "========================================="
+          - "  Dashboard URL : https://{{ inventory_hostname }}"
+          - "  WebSocket URL : wss://{{ inventory_hostname }}"
+          - "  Token         : {{ openclaw_token.stdout }}"
+          - "========================================="
+          - "  Next step: open the Dashboard URL, enter"
+          - "  the WebSocket URL + Token, click Connect,"
+          - "  then run: ansible-playbook -i inventory.ini approve_device.yml"
+          - "========================================="

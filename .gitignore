@@ -1,0 +1,25 @@
+# Terraform
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# SSH keys
+*.pem
+
+# Ansible
+ansible/inventory.ini
+
+# Personal / talk notes
+PLAN.md
+TALK.md
+
+# Claude memory
+.claude/

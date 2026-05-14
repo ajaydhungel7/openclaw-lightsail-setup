@@ -1,0 +1,51 @@
+---
+# OpenClaw Device Approval Playbook
+#
+# Run this after you have opened the dashboard in your browser,
+# entered the WebSocket URL + Token, and clicked Connect.
+#
+# What it does:
+#   1. Polls for a pending device pairing request (up to 5 minutes)
+#   2. Approves it automatically
+#
+# Usage:
+#   ansible-playbook -i inventory.ini approve_device.yml
+
+- name: Approve OpenClaw device pairing
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Poll for pending pairing request (up to 5 minutes)
+      ansible.builtin.shell: |
+        for i in $(seq 1 60); do
+          REQUEST_ID=$(openclaw devices list 2>/dev/null \
+            | grep -oP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+            | head -1)
+          if [ -n "$REQUEST_ID" ]; then
+            echo "$REQUEST_ID"
+            exit 0
+          fi
+          sleep 5
+        done
+        exit 1
+      register: pairing_request
+      changed_when: false
+      failed_when: pairing_request.rc != 0
+
+    - name: Approve pairing request
+      ansible.builtin.command: "openclaw devices approve {{ pairing_request.stdout }}"
+      changed_when: true
+
+    - name: Done
+      ansible.builtin.debug:
+        msg:
+          - "========================================="
+          - "  Device approved!"
+          - "  Your browser is now paired with OpenClaw."
+          - "  Go to the Chat tab to start using your AI assistant."
+          - "========================================="
